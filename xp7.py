@@ -251,6 +251,48 @@ class XP7:
                 print "{:<10s} {:<10s} {:<10s} {:<10s}".format("",lun.port_name,lun.lun_id,lun.ldev_nbr)
             print
             
+    def print_hostgroup_noluns(self,hostgroup_name=None):
+        """
+        print ports / hba_wwn per hostgroup
+        """
+        if hostgroup_name is None:
+            ### list all hostgroups ###
+            hostgroup_name_list = self.hostgroup_name_list
+        elif hostgroup_name in self.hostgroup_name_list:
+            ### list only the requested hostgroup ###
+            hostgroup_name_list = [hostgroup_name]
+        else:
+            hostgroup_name_list = []
+        ### report on the hostgroups in the list ###
+        for hostgroup_name in hostgroup_name_list:
+            print "{:{fill}{align}{width}s}".format("=",fill="=",width=100,align="^")
+            print "{:{fill}{align}{width}s}".format(hostgroup_name,fill="=",width=100,align="^")
+            print "{:{fill}{align}{width}s}".format("=",fill="=",width=100,align="^")
+            print
+            ### ports ###
+            hostgroup_list = [x for x in self.hostgroups if x.name == hostgroup_name]
+            hostgroup_list.sort(key=lambda x: x.port_name)
+            print "{:<50s} {:<10s} {:<10s} {:<20s} {:<10s}".format("HOSTGROUP","PORT","HOST MODE","HOST MODE OPTIONS","NBR")
+            print "{:=<50s} {:=<10s} {:=<10s} {:=<20s} {:=<10s}".format("","","","","")
+            for hostgroup in hostgroup_list:
+                print "{:<50s} {:<10s} {:<10s} {:<20s} {:<10d}".format(hostgroup.name,hostgroup.port_name,hostgroup.mode,",".join(hostgroup.options),hostgroup.nbr)
+            print
+            ### hba_wwns ###
+            hba_wwn_list = [x for x in self.hba_wwns if x.hostgroup_name == hostgroup_name]
+            hba_wwn_list.sort(key=lambda x: x.port_name)
+            print "{:<10s} {:<10s} {:<20s} {:<20s} {:<10s}".format("HBA_WWN","PORT","WWN","NICKNAME","LOGGED IN")
+            print "{:=<10s} {:=<10s} {:=<20s} {:=<20s} {:=<10s}".format("","","","","")
+            for hba_wwn in hba_wwn_list:
+                print "{:<10s} {:<10s} {:<20s} {:<20s} {:<1s}".format("",hba_wwn.port_name,hba_wwn.wwn,hba_wwn.nickname,"V" if self.test_logged_in(hba_wwn.port_name,hba_wwn.wwn) else "X")
+            print
+            ### luns ###
+            lun_list = [x for x in self.luns if x.hostgroup_name == hostgroup_name]
+            port_set = set([x.port_name for x in lun_list])
+            print "{:<10s} {:<10s}".format("PORT","# LUNs")
+            for port_name in sorted(port_set):
+                print "{:<10s} {}".format(port_name,len([x for x in lun_list if x.port_name == port_name]))
+            print
+            
     def print_hostgroup_summary(self,hostgroup_name,indent=0):
         """
         print hostgroup name / host_mode / host_mode_options / nbr
@@ -987,6 +1029,25 @@ class XP7:
         else:
             fh.write(res)
                     
+    def print_horcm_ldev(self,hostgroup_name,dev_group,fh=None):
+        """
+        print the HORCM_LDEV entries
+        """
+        ldev_nbr_list = self.get_hostgroup_ldevs(hostgroup_name)
+        res = "HORCM_LDEV\n"
+        res += "{:<30s}    {:<30s}    {:<20s}    {:<20s}    {:<20s}\n".format(
+            "# dev_grp","dev_name","serial_nbr","ldev_nbr","mu_nbr"
+        )
+        for ldev_nbr in ldev_nbr_list:
+            ldev = self.get_ldev(ldev_nbr)
+            res += "{:<30s}    {:<30s}    {:<20d}    {:<20s}    {:<20s}\n".format(
+                dev_group,dev_group + "_" + ldev.standard_format(),self.serial_nbr,ldev.long_format(),"0"
+            )
+        if fh is None:
+            print res
+        else:
+            fh.write(res)
+        
 ####################################################################################################
 ### Class IO_Port
 ####################################################################################################
@@ -1097,6 +1158,36 @@ class Ldev:
         else:
             return False
         
+    def convert_size(self):
+        """
+        return the ldev size in human readble format
+        """
+        nbr_bytes = self.size * 512
+        if nbr_bytes > 1024 ** 4:
+            return "{0:d} TB".format(nbr_bytes / 1024**4 )
+        elif nbr_bytes > 1024 ** 3:
+            return "{0:d} GB".format(nbr_bytes / 1024**3 )
+        elif nbr_bytes > 1024 ** 2:
+            return "{0:d} MB".format(nbr_bytes / 1024**2 )
+        elif nbr_bytes > 1024:
+            return "{0:d} KB".format(nbr_bytes / 1024 )
+        else:
+            return "{0:d} B".format(nbr_bytes)
+        
+    def standard_format(self):
+        ### remove : ###
+        res = self.nbr.translate(None,":")
+        res = res.translate(None,string.whitespace)
+        ### lower case ###
+        return res.lower()
+    
+    def long_format(self):
+        res = self.standard_format()
+        res = "{}:{}".format(
+            res[0:2],res[2:4]
+        )
+        return res.upper()
+            
 ####################################################################################################
 ### Class Lun
 ####################################################################################################
