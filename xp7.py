@@ -1047,6 +1047,13 @@ class XP7:
             print res
         else:
             fh.write(res)
+            
+    def test_hostgroup_exists(self,hostgroup_name):
+        hg_exists = False
+        for hostgroup in self.hostgroups:
+            if hostgroup.name == hostgroup_name:
+                hg_exists = True
+        return hg_exists
         
 ####################################################################################################
 ### Class IO_Port

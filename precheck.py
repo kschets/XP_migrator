@@ -25,6 +25,13 @@ import re
 ####################################################################################################
 #  VARIABLES 
 ####################################################################################################
+box_pair_dict = {
+    "OS10":["OS10_AB","OS10_HAREN"],
+    "OS11":["OS11_AB","OS11_HAREN"],
+    "OS12":["OS12_AB","OS12_HAREN"],
+    "OS13":["OS13_AB","OS13_HAREN"],
+}
+
 source_box_dict = {
     "OS10_AB":65101,
     "OS10_HAREN":65102,
@@ -72,32 +79,54 @@ collect_file_dict = {
 ### read xpinfo file if provided ###
 
 ### select source box ###
-source_box_list = sorted(source_box_dict.keys())
+boxpair_list = sorted(box_pair_dict.keys())
 print "Source disk boxes : "
 print
-for box_nbr,source_box_name in enumerate(source_box_list):
-    print "    {}   {}".format(box_nbr,source_box_name)
+for boxpair_nbr,boxpair_name in enumerate(boxpair_list):
+    print "    {}   {}".format(boxpair_nbr,boxpair_name)
 print
-select_nbr = input("Enter box nbr : ")
+select_nbr = input("Enter box-pair nbr : ")
 
 ### instantiate source box object ###
-source_box_name = source_box_list[select_nbr]
-source_box_instance_nbr = instance_dict[source_box_name]
-source_box_serial_nbr = source_box_dict[source_box_name]
-source_box_site = site_dict[source_box_name]
-source_box_collect_file = collect_file_dict[source_box_name]
-source_box = xp7.XP7(source_box_name,source_box_instance_nbr,source_box_serial_nbr,source_box_site,source_box_collect_file)
+source_box_ab_name = box_pair_dict[boxpair_list[select_nbr]][0]
+source_box_haren_name = box_pair_dict[boxpair_list[select_nbr]][1]
+
+source_box_ab_instance_nbr = instance_dict[source_box_ab_name]
+source_box_haren_instance_nbr = instance_dict[source_box_haren_name]
+
+source_box_ab_serial_nbr = source_box_dict[source_box_ab_name]
+source_box_haren_serial_nbr = source_box_dict[source_box_haren_name]
+
+source_box_ab_collect_file = collect_file_dict[source_box_ab_name]
+source_box_haren_collect_file = collect_file_dict[source_box_haren_name]
+
+source_box_ab = xp7.XP7(source_box_ab_name,source_box_ab_instance_nbr,source_box_ab_serial_nbr,"AB",source_box_ab_collect_file)
+source_box_haren = xp7.XP7(source_box_haren_name,source_box_haren_instance_nbr,source_box_haren_serial_nbr,"HAREN",source_box_haren_collect_file)
 
 ### select hostgroup ###
-hostgroup_name_list = [ x for x in source_box.get_hostgroups() if not re.match(".*-G00$",x)]
+hg_name_set = set()
+hg_name_set = hg_name_set.union([x for x in source_box_ab.get_hostgroups() if not re.match(".*-G00$",x)])
+hg_name_set = hg_name_set.union([x for x in source_box_haren.get_hostgroups() if not re.match(".*-G00$",x)])
+hg_name_list = list(sorted(hg_name_set))
 print "Source HOSTGROUPs : "
 print
-for hg_nbr,hg_name in enumerate(hostgroup_name_list):
+for hg_nbr,hg_name in enumerate(hg_name_list):
     print "    {}    {}".format(hg_nbr,hg_name)
 print
 select_hg_nbr = input("Enter hostgroup nbr : ")
-select_hg_name = hostgroup_name_list[select_hg_nbr]
-print "{}/{} HG selected for migration precheck..".format(source_box.name,select_hg_name)
+select_hg_name = hg_name_list[select_hg_nbr]
+print "{} HG selected for migration precheck..".format(select_hg_name)
+
+if source_box_ab.test_hostgroup_exists(select_hg_name):
+    print "AB check for {} consistency : {}".format(
+        select_hg_name,"V" if source_box_ab.test_hostgroup_consistency(select_hg_name) else "X"
+    )
+if source_box_haren.test_hostgroup_exists(select_hg_name):
+    print "HAREN check for {} consistency : {}".format(
+        select_hg_name,"V" if source_box_haren.test_hostgroup_consistency(select_hg_name) else "X"
+    )
+    
+"""
 source_box.print_hostgroup_noluns(select_hg_name)
 
 ### consistency check hostgroup ###
@@ -136,3 +165,4 @@ for ldev_nbr in ldev_list:
         print "{} : {} blocks ( {} )".format(
             ldev.nbr, ldev.size, ldev.convert_size()
         )
+"""
