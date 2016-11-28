@@ -1055,6 +1055,115 @@ class XP7:
                 hg_exists = True
         return hg_exists
         
+    def get_hostgroup_noluns(self,hostgroup_name=None):
+        """
+        return ports / hba_wwn per hostgroup
+        """
+        res = []
+        if hostgroup_name is None:
+            ### list all hostgroups ###
+            hostgroup_name_list = self.hostgroup_name_list
+        elif hostgroup_name in self.hostgroup_name_list:
+            ### list only the requested hostgroup ###
+            hostgroup_name_list = [hostgroup_name]
+        else:
+            hostgroup_name_list = []
+        ### report on the hostgroups in the list ###
+        for hostgroup_name in hostgroup_name_list:
+            res.append("{:{fill}{align}{width}s}".format("=",fill="=",width=100,align="^"))
+            res.append("{:{fill}{align}{width}s}".format(hostgroup_name,fill="=",width=100,align="^"))
+            res.append("{:{fill}{align}{width}s}".format("=",fill="=",width=100,align="^"))
+            res.append("")
+            ### ports ###
+            hostgroup_list = [x for x in self.hostgroups if x.name == hostgroup_name]
+            hostgroup_list.sort(key=lambda x: x.port_name)
+            res.append("{:<50s} {:<10s} {:<10s} {:<20s} {:<10s}".format("HOSTGROUP","PORT","HOST MODE","HOST MODE OPTIONS","NBR"))
+            res.append("{:=<50s} {:=<10s} {:=<10s} {:=<20s} {:=<10s}\n".format("","","","",""))
+            for hostgroup in hostgroup_list:
+                res.append("{:<50s} {:<10s} {:<10s} {:<20s} {:<10d}".format(hostgroup.name,hostgroup.port_name,hostgroup.mode,",".join(hostgroup.options),hostgroup.nbr))
+            res.append("")
+            ### hba_wwns ###
+            hba_wwn_list = [x for x in self.hba_wwns if x.hostgroup_name == hostgroup_name]
+            hba_wwn_list.sort(key=lambda x: x.port_name)
+            res.append("{:<10s} {:<10s} {:<20s} {:<20s} {:<10s}".format("HBA_WWN","PORT","WWN","NICKNAME","LOGGED IN"))
+            res.append("{:=<10s} {:=<10s} {:=<20s} {:=<20s} {:=<10s}".format("","","","",""))
+            for hba_wwn in hba_wwn_list:
+                res.append("{:<10s} {:<10s} {:<20s} {:<20s} {:<1s}".format("",hba_wwn.port_name,hba_wwn.wwn,hba_wwn.nickname,"V" if self.test_logged_in(hba_wwn.port_name,hba_wwn.wwn) else "X"))
+            res.append("")
+            ### luns ###
+            lun_list = [x for x in self.luns if x.hostgroup_name == hostgroup_name]
+            port_set = set([x.port_name for x in lun_list])
+            res.append("{:<10s} {:<10s}".format("PORT","# LUNs"))
+            res.append("{:=<10s} {:=<10s}".format("",""))
+            for port_name in sorted(port_set):
+                res.append("{:<10s} {}".format(port_name,len([x for x in lun_list if x.port_name == port_name])))
+            res.append("")
+        return res
+    
+    def get_hostgroup_consistency(self,hostgroup_name):
+        """
+        return the report on hostgroup consistency
+        """
+        res = []
+        result = True
+        if self.test_hostgroup_exists(hostgroup_name):
+            ### hostmode and hostmode options test ### 
+            hm_set = set()
+            hmo_set = set()
+            for hostgroup in self.hostgroups:
+                if hostgroup.name == hostgroup_name:
+                    hm_set.add(hostgroup.mode)
+                    hmo_set.add(",".join(hostgroup.options))
+            if len(hm_set) != 1:
+                result = False
+                res.append("    host modes are not consistent")
+            if len(hmo_set) != 1:
+                result = False
+                res.append("    host mode options are not consistent")
+            ### LDEV test ###
+            lun_list = [x for x in self.luns if x.hostgroup_name == hostgroup_name]
+            port_set = set([x.port_name for x in lun_list])
+            if len(port_set) % 2 != 0:
+                result = False
+                res.append("    hostgroup defined on odd number of ports")
+            base_set = None
+            for port_name in sorted(port_set):
+                new_set = set([x.ldev_nbr for x in lun_list if x.port_name == port_name])
+                if base_set is None:
+                    base_set = new_set
+                else:
+                    if len(base_set.difference(new_set)) != 0:
+                        result = False
+                        res.append("    LDEVs differ on different ports")
+            res.append("")
+            if result:
+                res.insert(0,"{}-{} is consistent".format(self.name,hostgroup_name))
+            else:
+                res.insert(0,"{}-{} is not consistent".format(self.name,hostgroup_name))
+            return res
+        else:
+            res.append("{}-{} does not exists".format(self.name,hostgroup_name))
+            res.append("")
+            return res
+    
+    def print_provisioning(self,hostgroup_name,fh=None):
+        """
+        print the provisioning list
+        """
+        ldev_nbr_list = self.get_hostgroup_ldevs(hostgroup_name)
+        res = "# LDEVs in {}-{}\n".format(self.name,hostgroup_name)
+        res += "# {},{}\n".format("LDEV nbr","LDEV size")
+        for ldev_nbr in ldev_nbr_list:
+            ldev = self.get_ldev(ldev_nbr)
+            if ldev.is_cmd_device():
+                res += "# {} is a CMD device\n".format(ldev.nbr)
+            else:
+                res += "{},{}\n".format(ldev.nbr,ldev.size)
+        if fh is None:
+            print res
+        else:
+            fh.write(res)
+            
 ####################################################################################################
 ### Class IO_Port
 ####################################################################################################

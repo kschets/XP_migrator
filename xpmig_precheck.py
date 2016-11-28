@@ -140,7 +140,7 @@ class InputMenu(object):
         
 class SelectMenu(object):
     
-    def __init__(self,window,items,selection,search,stdscr):
+    def __init__(self,window,items,boxpair_name,selection,search,stdscr):
         self.window = window
         self.heigth,self.width = self.window.getmaxyx()
         self.items = items
@@ -148,7 +148,8 @@ class SelectMenu(object):
         self.filtered_items.append("exit")
         ### slice is a view on the items which fits in the window ### 
         self.slice_start = 0
-        self.slice_end = min(len(self.filtered_items)-1,self.heigth-6)
+        self.slice_len = min(len(self.filtered_items)-1,self.heigth-6)
+        self.slice_end = self.slice_start + self.slice_len
         self.window.keypad(1)
         self.panel = panel.new_panel(self.window)
         self.panel.hide()
@@ -156,6 +157,7 @@ class SelectMenu(object):
         self.position = 0
         self.selection = selection
         self.search = search
+        self.boxpair_name = boxpair_name
         
     def update(self):
         """
@@ -169,7 +171,7 @@ class SelectMenu(object):
             self.filtered_items = copy.copy(self.items)
         self.filtered_items.append("exit")
         self.slice_start = 0
-        self.slice_end = min(len(self.filtered_items)-1,self.heigth-6)
+        self.slice_end = self.slice_start + self.slice_len
         self.position = 0
         
     def navigate(self,n):
@@ -183,14 +185,18 @@ class SelectMenu(object):
         if n < 0:
             if self.position - self.slice_start < 2 and self.slice_start >= 1:
                 ### slide slice up ###
-                self.slice_start -= 1
-                self.slice_end -= 1
+                self.slice_start += n
+                if self.slice_start < 0:
+                    self.slice_start = 0
+                self.slice_end = self.slice_start + self.slice_len
                 logger.debug("SelectMenu.navigate :: slide slice up to {}-{}".format(self.slice_start,self.slice_end ))
         elif n > 0:
-            if self.slice_end - self.position < 2 and self.slice_end < len(self.items) - 1:
+            if self.slice_end - self.position < 2 and self.slice_end < len(self.filtered_items) - 1:
                 ### slide slice down ###
-                self.slice_start += 1
-                self.slice_end += 1
+                self.slice_end += n
+                if self.slice_end > len(self.filtered_items) - 1:
+                    self.slice_end = len(self.filtered_items) - 1
+                self.slice_start = self.slice_end - self.slice_len
                 logger.debug("SelectMenu.navigate :: slide slice down to {}-{}".format(self.slice_start,self.slice_end ))
             
     def display(self):
@@ -222,11 +228,15 @@ class SelectMenu(object):
                 if self.position == len(self.filtered_items) - 1:
                     break
                 else:
-                    self.selection.add(self.filtered_items[self.position])
+                    self.selection.add((self.boxpair_name,self.filtered_items[self.position]))
             elif key == curses.KEY_UP:
                 self.navigate(-1)
             elif key == curses.KEY_DOWN:
                 self.navigate(1)
+            elif key == curses.KEY_PPAGE:
+                self.navigate(-10)
+            elif key == curses.KEY_NPAGE:
+                self.navigate(10)
                 
         self.window.clear()
         self.panel.hide()
@@ -242,7 +252,7 @@ class Selection(object):
         
     def display(self):
         self.window.clear()
-        line = "{} : {}".format(self.title, ",".join(self.selection))
+        line = "{} : {}".format(self.title, ",".join(["{}-{}".format(x[0],x[1]) for x in self.selection]))
         self.window.addstr(1,2,line)
         self.window.border()
         self.window.refresh()
@@ -287,6 +297,165 @@ class Search(object):
     def get(self):
         return self.search_str
     
+class ShowSummaryMenu(object):
+    
+    def __init__(self,window,selection,stdscr):
+        self.window = window
+        self.selection = selection
+        self.hostgroup_summary = []
+        self.window.keypad(1)
+        self.panel = panel.new_panel(self.window)
+        self.panel.hide()
+        panel.update_panels()
+        self.display_list = []
+        
+    def navigate(self,n):
+        if n < 0:
+            if self.slice_start >= 1:
+                self.slice_start += n
+                if self.slice_start < 0:
+                    self.slice_start = 0
+                self.slice_end = self.slice_start + self.slice_len
+        elif n > 0:
+            if self.slice_end < len(self.display_list) - 1:
+                self.slice_end += n
+                if self.slice_end > len(self.display_list) - 1:
+                    self.slice_end = len(self.display_list) - 1
+                self.slice_start = self.slice_end - self.slice_len
+        
+    def display(self):
+        self.panel.top()
+        self.panel.show()
+        self.window.clear()
+        self.heigth,self.width = self.window.getmaxyx()
+        ### fill the list to display ###
+        self.display_list = []
+        for boxpair_name,hostgroup_name in self.selection.get():
+            for box_name in boxpair_dict[boxpair_name]:
+                self.display_list.extend(box_dict[box_name].get_hostgroup_noluns(hostgroup_name))
+        ### now we know what to display ###
+        self.slice_start = 0
+        self.slice_len = min(len(self.display_list),self.heigth-6)
+        self.slice_end = self.slice_start + self.slice_len
+        while True:
+            self.window.clear()
+            self.window.refresh()
+            curses.doupdate()
+            for index,item in enumerate(self.display_list):
+                if self.slice_start <= index <= self.slice_end:
+                    self.window.addstr(2+(index-self.slice_start),2,item,curses.A_NORMAL)
+            key = self.window.getch()
+            if key in [curses.KEY_ENTER,ord("\n")]:
+                break
+            elif key == curses.KEY_UP:
+                self.navigate(-1)
+            elif key == curses.KEY_DOWN:
+                self.navigate(1)
+            elif key == curses.KEY_PPAGE:
+                self.navigate(-10)
+            elif key == curses.KEY_NPAGE:
+                self.navigate(10)
+        self.window.clear()
+        self.panel.hide()
+        panel.update_panels()
+        curses.doupdate()
+        
+class ShowConsistencyMenu(object):
+    
+    def __init__(self,window,selection,stdscr):
+        self.window = window
+        self.selection = selection
+        self.window.keypad(1)
+        self.panel = panel.new_panel(self.window)
+        self.panel.hide()
+        panel.update_panels()
+        self.display_list = []
+        
+    def navigate(self,n):
+        if n < 0:
+            if self.slice_start >= 1:
+                self.slice_start += n
+                if self.slice_start < 0:
+                    self.slice_start = 0
+                self.slice_end = self.slice_start + self.slice_len
+        elif n > 0:
+            if self.slice_end < len(self.display_list) - 1:
+                self.slice_end += n
+                if self.slice_end > len(self.display_list) - 1:
+                    self.slice_end = len(self.display_list) - 1
+                self.slice_start = self.slice_end - self.slice_len
+        
+    def display(self):
+        self.panel.top()
+        self.panel.show()
+        self.window.clear()
+        self.heigth,self.width = self.window.getmaxyx()
+        ### fill the list to display ###
+        self.display_list = []
+        for boxpair_name,hostgroup_name in self.selection.get():
+            for box_name in boxpair_dict[boxpair_name]:
+                # self.display_list.extend(box_dict[box_name].get_hostgroup_noluns(hostgroup_name))
+                # self.display_list.append("{}-{}: {}".format(boxpair_name,hostgroup_name,"V" if box_dict[box_name].test_hostgroup_consistency(hostgroup_name) else "X"))
+                self.display_list.extend(box_dict[box_name].get_hostgroup_consistency(hostgroup_name))
+        ### now we know what to display ###
+        self.slice_start = 0
+        self.slice_len = min(len(self.display_list),self.heigth-6)
+        self.slice_end = self.slice_start + self.slice_len
+        while True:
+            self.window.clear()
+            self.window.refresh()
+            curses.doupdate()
+            for index,item in enumerate(self.display_list):
+                if self.slice_start <= index <= self.slice_end:
+                    self.window.addstr(2+(index-self.slice_start),2,item,curses.A_NORMAL)
+            key = self.window.getch()
+            if key in [curses.KEY_ENTER,ord("\n")]:
+                break
+            elif key == curses.KEY_UP:
+                self.navigate(-1)
+            elif key == curses.KEY_DOWN:
+                self.navigate(1)
+            elif key == curses.KEY_PPAGE:
+                self.navigate(-10)
+            elif key == curses.KEY_NPAGE:
+                self.navigate(10)
+        self.window.clear()
+        self.panel.hide()
+        panel.update_panels()
+        curses.doupdate()
+        
+class ShowWriteProvisionMenu(object):
+    
+    def __init__(self,window,selection,stdscr):
+        self.window = window
+        self.selection = selection
+        self.window.keypad(1)
+        self.panel = panel.new_panel(self.window)
+        self.panel.hide()
+        panel.update_panels()
+        
+    def display(self):
+        self.panel.top()
+        self.panel.show()
+        self.window.clear()
+        self.window.addstr(1,2,"Write provisioning out to file for the selected HOSTGROUPs ? (Y/n)")
+        key = self.window.getch()
+        if key in [curses.KEY_ENTER,ord("\n"),ord("Y"),ord("y")]:
+            ### write out the ldevs to file ###
+            for boxpair_name,hostgroup_name in self.selection.get():
+                for box_name in boxpair_dict[boxpair_name]:
+                    if box_dict[box_name].test_hostgroup_exists(hostgroup_name):
+                        sf = "/tmp/{}_{}.prov".format(box_name,hostgroup_name)
+                        with open(sf,"wt") as sfh:
+                            box_dict[box_name].print_provisioning(hostgroup_name,sfh)
+            self.window.addstr(2,2,"Written..")
+        else:
+            self.window.addstr(2,2,"Cancelled..")
+        self.window.clear()
+        self.panel.hide()
+        panel.update_panels()
+        curses.doupdate()
+        
 ####################################################################################################
 ### MAIN
 ####################################################################################################
@@ -314,19 +483,25 @@ def main(stdscr):
     # menu_win.border()
     
     main_menu_items = []
-    for boxpair_name in boxpair_dict:
+    for boxpair_name in sorted(boxpair_dict.keys()):
         hostgroup_name_set = set()
         for box_name in boxpair_dict[boxpair_name]:
             hostgroup_name_set = hostgroup_name_set.union([x for x in box_dict[box_name].get_hostgroups() if not re.match(".*-G00$",x)])
         hostgroup_name_list = list(sorted(hostgroup_name_set))
-        sel_menu_item = SelectMenu(menu_win,hostgroup_name_list,selection,search,stdscr)
+        sel_menu_item = SelectMenu(menu_win,hostgroup_name_list,boxpair_name,selection,search,stdscr)
         main_menu_items.append(("Select HOSTGROUP from {} boxpair".format(boxpair_name),sel_menu_item.display))
     
     input_search = InputMenu(menu_win,"Specify new search string",search,stdscr)
     main_menu_items.append(("Set   SEARCH string",input_search.display))
     main_menu_items.append(("Clear SEARCH string",search.clear))
     
+    hostgroup_summary = ShowSummaryMenu(menu_win,selection,stdscr)
+    main_menu_items.append(("Show HOSTGROUPs summary",hostgroup_summary.display))
+    hostgroup_consistency = ShowConsistencyMenu(menu_win,selection,stdscr)
+    main_menu_items.append(("Show HOSTGROUPs consistency check results",hostgroup_consistency.display))
     main_menu_items.append(("Clear HOSTGROUP selection",selection.clear))
+    write_prov = ShowWriteProvisionMenu(menu_win,selection,stdscr)
+    main_menu_items.append(("Write provisioning to file",write_prov.display))
     
     main_menu = Menu(menu_win,main_menu_items,stdscr)
     main_menu.display()
