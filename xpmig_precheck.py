@@ -138,111 +138,6 @@ class InputMenu(object):
         curses.noecho()
         curses.doupdate()
         
-class SelectMenu(object):
-    
-    def __init__(self,window,items,boxpair_name,selection,search,stdscr):
-        self.window = window
-        self.heigth,self.width = self.window.getmaxyx()
-        self.items = items
-        self.filtered_items = copy.copy(self.items)
-        self.filtered_items.append("exit")
-        ### slice is a view on the items which fits in the window ### 
-        self.slice_start = 0
-        self.slice_len = min(len(self.filtered_items)-1,self.heigth-6)
-        self.slice_end = self.slice_start + self.slice_len
-        self.window.keypad(1)
-        self.panel = panel.new_panel(self.window)
-        self.panel.hide()
-        panel.update_panels()
-        self.position = 0
-        self.selection = selection
-        self.search = search
-        self.boxpair_name = boxpair_name
-        
-    def update(self):
-        """
-        update the items list to contain only HG matching the new search criteria
-        """
-        if self.search.get() != "":
-            logger.debug("SelectMenu.update :: update items to match search str {}".format(self.search.get()))
-            self.filtered_items = [x for x in self.items if re.search(self.search.get(),x,flags=re.IGNORECASE)]
-        else:
-            logger.debug("SelectMenu.update :: update items to match search all")
-            self.filtered_items = copy.copy(self.items)
-        self.filtered_items.append("exit")
-        self.slice_start = 0
-        self.slice_end = self.slice_start + self.slice_len
-        self.position = 0
-        
-    def navigate(self,n):
-        self.position += n
-        if self.position < 0:
-            self.position = 0
-        elif self.position >= len(self.filtered_items):
-            self.position = len(self.filtered_items) - 1
-        logger.debug("SelectMenu.navigate :: position = {}, n = {}".format(self.position,n ))
-        ### adjust slice ###
-        if n < 0:
-            if self.position - self.slice_start < 2 and self.slice_start >= 1:
-                ### slide slice up ###
-                self.slice_start += n
-                if self.slice_start < 0:
-                    self.slice_start = 0
-                self.slice_end = self.slice_start + self.slice_len
-                logger.debug("SelectMenu.navigate :: slide slice up to {}-{}".format(self.slice_start,self.slice_end ))
-        elif n > 0:
-            if self.slice_end - self.position < 2 and self.slice_end < len(self.filtered_items) - 1:
-                ### slide slice down ###
-                self.slice_end += n
-                if self.slice_end > len(self.filtered_items) - 1:
-                    self.slice_end = len(self.filtered_items) - 1
-                self.slice_start = self.slice_end - self.slice_len
-                logger.debug("SelectMenu.navigate :: slide slice down to {}-{}".format(self.slice_start,self.slice_end ))
-            
-    def display(self):
-        self.panel.top()
-        self.panel.show()
-        self.window.clear()
-        self.update()
-        
-        while True:
-            self.window.clear()
-            self.window.refresh()
-            curses.doupdate()
-            for index,item in enumerate(self.filtered_items):
-                if index == self.position:
-                    mode = curses.A_STANDOUT
-                else:
-                    mode = curses.A_NORMAL
-                # line = "{}: {}".format(index,item)
-                line = "{}".format(item)
-                ### only add lines in the slice ###
-                # logger.debug("SelectMenu.display :: about to addstr line {}".format(line))
-                if self.slice_start <= index <= self.slice_end:
-                    # logger.debug("SelectMenu.display :: index in slice {} - {}, executing addstr".format(self.slice_start,self.slice_end))
-                    self.window.addstr(2+(index-self.slice_start),2,line,mode)
-            
-            key = self.window.getch()
-            
-            if key in [curses.KEY_ENTER,ord("\n")]:
-                if self.position == len(self.filtered_items) - 1:
-                    break
-                else:
-                    self.selection.add((self.boxpair_name,self.filtered_items[self.position]))
-            elif key == curses.KEY_UP:
-                self.navigate(-1)
-            elif key == curses.KEY_DOWN:
-                self.navigate(1)
-            elif key == curses.KEY_PPAGE:
-                self.navigate(-10)
-            elif key == curses.KEY_NPAGE:
-                self.navigate(10)
-                
-        self.window.clear()
-        self.panel.hide()
-        panel.update_panels()
-        curses.doupdate()
-        
 class Selection(object):
     
     def __init__(self,window,title,stdscr):
@@ -456,6 +351,114 @@ class ShowWriteProvisionMenu(object):
         panel.update_panels()
         curses.doupdate()
         
+class Select_Menu(object):
+    
+    def __init__(self,window,items,selection,search,stdscr):
+        self.window = window
+        self.heigth,self.width = self.window.getmaxyx()
+        ### items is a dict ###
+        self.items = items
+        self.filtered_items = copy.copy(self.items.keys())
+        self.filtered_items.append("exit")
+        ### slice is a view on the items which fits in the window ### 
+        self.slice_start = 0
+        self.slice_len = min(len(self.filtered_items)-1,self.heigth-6)
+        self.slice_end = self.slice_start + self.slice_len
+        self.window.keypad(1)
+        self.panel = panel.new_panel(self.window)
+        self.panel.hide()
+        panel.update_panels()
+        self.position = 0
+        self.selection = selection
+        self.search = search
+        
+    def update(self):
+        """
+        update the selection items list to match the new search criteria
+        """
+        if self.search.get() != "":
+            logger.debug("Select_Menu.update :: update items to match search str {}".format(self.search.get()))
+            self.filtered_items = [x for x in self.items.keys() if re.search(self.search.get(),x,flags=re.IGNORECASE)]
+        else:
+            logger.debug("Select_Menu.update :: update items to match search all")
+            self.filtered_items = copy.copy(self.items.keys())
+        self.filtered_items.append("exit")
+        self.slice_start = 0
+        self.slice_end = self.slice_start + self.slice_len
+        self.position = 0
+        
+    def navigate(self,n):
+        self.position += n
+        if self.position < 0:
+            self.position = 0
+        elif self.position >= len(self.filtered_items):
+            self.position = len(self.filtered_items) - 1
+        logger.debug("Select_Menu.navigate :: position = {}, n = {}".format(self.position,n ))
+        ### adjust slice ###
+        if n < 0:
+            if self.position - self.slice_start < 2 and self.slice_start >= 1:
+                ### slide slice up ###
+                self.slice_start += n
+                if self.slice_start < 0:
+                    self.slice_start = 0
+                self.slice_end = self.slice_start + self.slice_len
+                logger.debug("Select_Menu.navigate :: slide slice up to {}-{}".format(self.slice_start,self.slice_end ))
+        elif n > 0:
+            if self.slice_end - self.position < 2 and self.slice_end < len(self.filtered_items) - 1:
+                ### slide slice down ###
+                self.slice_end += n
+                if self.slice_end > len(self.filtered_items) - 1:
+                    self.slice_end = len(self.filtered_items) - 1
+                self.slice_start = self.slice_end - self.slice_len
+                logger.debug("Select_Menu.navigate :: slide slice down to {}-{}".format(self.slice_start,self.slice_end ))
+            
+    def display(self):
+        self.panel.top()
+        self.panel.show()
+        self.window.clear()
+        self.update()
+        
+        while True:
+            self.window.clear()
+            self.window.refresh()
+            curses.doupdate()
+            for index,item in enumerate(self.filtered_items):
+                if index == self.position:
+                    mode = curses.A_STANDOUT
+                else:
+                    mode = curses.A_NORMAL
+                # line = "{}: {}".format(index,item)
+                line = "{}".format(item)
+                ### only add lines in the slice ###
+                # logger.debug("SelectMenu.display :: about to addstr line {}".format(line))
+                if self.slice_start <= index <= self.slice_end:
+                    # logger.debug("SelectMenu.display :: index in slice {} - {}, executing addstr".format(self.slice_start,self.slice_end))
+                    self.window.addstr(2+(index-self.slice_start),2,line,mode)
+            
+            key = self.window.getch()
+            
+            if key in [curses.KEY_ENTER,ord("\n")]:
+                if self.position == len(self.filtered_items) - 1:
+                    break
+                else:
+                    # self.items = {"select_str":[(boxpair_name,hostgroup_name),...]}
+                    # self.selection.add(self.items[self.filtered_items[self.position]])
+                    for add_item in self.items[self.filtered_items[self.position]]:
+                        self.selection.add(add_item)
+            elif key == curses.KEY_UP:
+                self.navigate(-1)
+            elif key == curses.KEY_DOWN:
+                self.navigate(1)
+            elif key == curses.KEY_PPAGE:
+                self.navigate(-10)
+            elif key == curses.KEY_NPAGE:
+                self.navigate(10)
+                
+        self.window.clear()
+        self.panel.hide()
+        panel.update_panels()
+        curses.doupdate()
+        
 ####################################################################################################
 ### MAIN
 ####################################################################################################
@@ -483,17 +486,52 @@ def main(stdscr):
     # menu_win.border()
     
     main_menu_items = []
-    for boxpair_name in sorted(boxpair_dict.keys()):
-        hostgroup_name_set = set()
-        for box_name in boxpair_dict[boxpair_name]:
-            hostgroup_name_set = hostgroup_name_set.union([x for x in box_dict[box_name].get_hostgroups() if not re.match(".*-G00$",x)])
-        hostgroup_name_list = list(sorted(hostgroup_name_set))
-        sel_menu_item = SelectMenu(menu_win,hostgroup_name_list,boxpair_name,selection,search,stdscr)
-        main_menu_items.append(("Select HOSTGROUP from {} boxpair".format(boxpair_name),sel_menu_item.display))
     
     input_search = InputMenu(menu_win,"Specify new search string",search,stdscr)
     main_menu_items.append(("Set   SEARCH string",input_search.display))
     main_menu_items.append(("Clear SEARCH string",search.clear))
+    
+    ### select hostgroups by box ###
+    for boxpair_name in boxpair_dict:
+        select_item_dict = {}
+        for box_name in boxpair_dict[boxpair_name]:
+            hostgroup_name_list = box_dict[box_name].get_hostgroups()
+            for hostgroup_name in hostgroup_name_list:
+                if hostgroup_name not in select_item_dict:
+                    select_item_dict[hostgroup_name] = []
+                select_item_dict[hostgroup_name].append((boxpair_name,hostgroup_name))
+        hg_by_box_menu = Select_Menu(menu_win,select_item_dict,selection,search,stdscr)
+        main_menu_items.append(("Select {} HOSTGROUP".format(boxpair_name),hg_by_box_menu.display))
+    
+    ### select hostgroups by host ###
+    select_item_dict = {}
+    for boxpair_name in sorted(boxpair_dict.keys()):
+        for box_name in boxpair_dict[boxpair_name]:
+            hostgroup_name_list = box_dict[box_name].get_hostgroups()
+            for hostgroup_name in hostgroup_name_list:
+                hba_wwn_list = box_dict[box_name].get_hostgroup_hba_wwns(hostgroup_name)
+                for hba_wwn in hba_wwn_list:
+                    if len(hba_wwn.nickname.split("_")) > 1:
+                        sel_item = hba_wwn.nickname.split("_")[0]
+                    else:
+                        sel_item = hba_wwn.nickname
+                    if "{}-{}".format(boxpair_name,sel_item) not in select_item_dict:
+                        select_item_dict["{}-{}".format(boxpair_name,sel_item)] = []
+                    select_item_dict["{}-{}".format(boxpair_name,sel_item)].append((boxpair_name,hostgroup_name))
+    hg_by_host_menu = Select_Menu(menu_win,select_item_dict,selection,search,stdscr)
+    main_menu_items.append(("Select by HOSTNAME",hg_by_host_menu.display))
+    
+    ### select hostgroups by name ###
+    select_item_dict = {}
+    for boxpair_name in sorted(boxpair_dict.keys()):
+        for box_name in boxpair_dict[boxpair_name]:
+            hostgroup_name_list = box_dict[box_name].get_hostgroups()
+            for hostgroup_name in hostgroup_name_list:
+                if hostgroup_name not in select_item_dict:
+                        select_item_dict[hostgroup_name] = []
+                select_item_dict[hostgroup_name].append((boxpair_name,hostgroup_name))
+    hg_by_name_menu = Select_Menu(menu_win,select_item_dict,selection,search,stdscr)
+    main_menu_items.append(("Select by HOSTGROUP",hg_by_name_menu.display))
     
     hostgroup_summary = ShowSummaryMenu(menu_win,selection,stdscr)
     main_menu_items.append(("Show HOSTGROUPs summary",hostgroup_summary.display))
@@ -560,7 +598,7 @@ except:
 #####################
 ### start logging ###
 #####################
-logger = logging.getLogger("curses")
+logger = logging.getLogger("xpmig_precheck")
 logger.setLevel(loglevel)
 fh = logging.handlers.RotatingFileHandler(logfile,maxBytes=logsize,backupCount=logversions)
 formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s","%Y/%m/%d-%H:%M:%S")
