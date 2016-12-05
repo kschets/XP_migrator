@@ -1140,25 +1140,25 @@ class XP7:
                 res.insert(0,"{}-{} is consistent".format(self.name,hostgroup_name))
             else:
                 res.insert(0,"{}-{} is not consistent".format(self.name,hostgroup_name))
-            return res
+            return result,res
         else:
             res.append("{}-{} does not exists".format(self.name,hostgroup_name))
             res.append("")
-            return res
+            return False,res
     
     def print_provisioning(self,hostgroup_name,fh=None):
         """
         print the provisioning list
         """
         ldev_nbr_list = self.get_hostgroup_ldevs(hostgroup_name)
-        res = "# LDEVs in {}-{}\n".format(self.name,hostgroup_name)
-        res += "# {},{}\n".format("LDEV nbr","LDEV size")
+        res = "# XPMIG mapping file for {}-{}\n".format(self.name,hostgroup_name)
+        res += "# {},{},{},{},{}\n".format("SOURCE BOX S/N","SOURCE LDEV nbr","SOURCE LDEV size","TARGET BOX S/N","TARGET VOLUME nbr")
         for ldev_nbr in ldev_nbr_list:
             ldev = self.get_ldev(ldev_nbr)
             if ldev.is_cmd_device():
-                res += "# {} is a CMD device\n".format(ldev.nbr)
+                res += "# {} is a CMD device\n".format(ldev.nbr.upper())
             else:
-                res += "{},{}\n".format(ldev.nbr,ldev.size)
+                res += "{},{},{}\n".format(self.serial_nbr,ldev.nbr.upper(),ldev.size)
         if fh is None:
             print res
         else:
