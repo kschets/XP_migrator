@@ -1071,7 +1071,7 @@ class XP7:
         ### report on the hostgroups in the list ###
         for hostgroup_name in hostgroup_name_list:
             res.append("{:{fill}{align}{width}s}".format("=",fill="=",width=100,align="^"))
-            res.append("{:{fill}{align}{width}s}".format(hostgroup_name,fill="=",width=100,align="^"))
+            res.append("{:{fill}{align}{width}s}".format(" {} {} ".format(self.name,hostgroup_name),fill="=",width=100,align="^"))
             res.append("{:{fill}{align}{width}s}".format("=",fill="=",width=100,align="^"))
             res.append("")
             ### ports ###

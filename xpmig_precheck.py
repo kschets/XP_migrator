@@ -22,7 +22,6 @@ LOG : xpmig_precheck.log
 
 TODO :
     add generate temporary horcm file and daemon to pairdisplay & check on status 
-    add read xpinfo file to main menu
 
 ####################################################################################################
 """
@@ -54,17 +53,6 @@ box_dict = {}
 ####################################################################################################
 ### FUNCTIONS
 ####################################################################################################
-def standard_format_ldev(ldev_nbr):
-    ### remove : ###
-    res = ldev_nbr.translate(None,":")
-    res = res.translate(None,string.whitespace)
-    ### lower case ###
-    return res.lower()
-
-def long_format_ldev(ldev_nbr):
-    res = standard_format_ldev(ldev_nbr)
-    res = "{}:{}".format(res[0:2].upper(),res[2:4].upper())
-    return res
 
 ####################################################################################################
 ### CLASSES
@@ -73,6 +61,7 @@ class Menu(object):
     
     def __init__(self,window,items,stdscr):
         self.window = window
+        self.heigth,self.width = self.window.getmaxyx()
         self.window.keypad(1)
         self.panel = panel.new_panel(self.window)
         self.panel.hide()
@@ -104,6 +93,8 @@ class Menu(object):
                     mode = curses.A_NORMAL
                 # line = "{}: {}".format(index,item[0])
                 line = "{}".format(item[0])
+                if len(line) >= self.width:
+                    line = line[:self.width-1]
                 self.window.addstr(1+index,2,line,mode)
             
             key = self.window.getch()
@@ -127,6 +118,7 @@ class InputMenu(object):
     
     def __init__(self,window,text,upd_obj,stdscr):
         self.window = window
+        self.heigth,self.width = self.window.getmaxyx()
         self.window.keypad(1)
         self.panel = panel.new_panel(self.window)
         self.panel.hide()
@@ -140,6 +132,8 @@ class InputMenu(object):
         self.panel.show()
         self.window.clear()
         line = "{}: ".format(self.text)
+        if line >= self.width:
+            line = line[:self.width-1]
         self.window.addstr(1,2,line)
         curses.echo()
         self.window.refresh()
@@ -157,12 +151,15 @@ class Selection(object):
     
     def __init__(self,window,title,stdscr):
         self.window = window
+        self.heigth,self.width = self.window.getmaxyx()
         self.title = title
         self.selection = []
         
     def display(self):
         self.window.clear()
         line = "{} : {}".format(self.title, ",".join(["{}-{}".format(x[0],x[1]) for x in self.selection]))
+        if len(line) >= self.width:
+            line = line[:self.width-1]
         self.window.addstr(1,2,line)
         self.window.border()
         self.window.refresh()
@@ -185,12 +182,15 @@ class Search(object):
     
     def __init__(self,window,title,stdscr):
         self.window = window
+        self.heigth,self.width = self.window.getmaxyx()
         self.title = title
         self.search_str = ""
         
     def display(self):
         self.window.clear()
         line = "{}: {}".format(self.title,self.search_str)
+        if len(line) >= self.width:
+            line = line[:self.width-1]
         self.window.addstr(1,2,line)
         self.window.border()
         self.window.refresh()
@@ -211,12 +211,15 @@ class Consistent(object):
     
     def __init__(self,window,title,stdscr):
         self.window = window
+        self.heigth,self.width = self.window.getmaxyx()
         self.title = title
         self.consistent = []
         
     def display(self):
         self.window.clear()
         line = "{}: {}".format(self.title,",".join(["{}-{}".format(x[0],x[1]) for x in self.consistent]))
+        if len(line) >= self.width:
+            line = line[:self.width-1]
         self.window.addstr(1,2,line)
         self.window.border()
         self.window.refresh()
@@ -239,6 +242,7 @@ class ShowSummaryMenu(object):
     
     def __init__(self,window,selection,stdscr):
         self.window = window
+        self.heigth,self.width = self.window.getmaxyx()
         self.selection = selection
         self.hostgroup_summary = []
         self.window.keypad(1)
@@ -268,9 +272,8 @@ class ShowSummaryMenu(object):
         self.heigth,self.width = self.window.getmaxyx()
         ### fill the list to display ###
         self.display_list = []
-        for boxpair_name,hostgroup_name in self.selection.get():
-            for box_name in boxpair_dict[boxpair_name]:
-                self.display_list.extend(box_dict[box_name].get_hostgroup_noluns(hostgroup_name))
+        for box_name,hostgroup_name in self.selection.get():
+            self.display_list.extend(box_dict[box_name].get_hostgroup_noluns(hostgroup_name))
         ### now we know what to display ###
         self.slice_start = 0
         self.slice_len = min(len(self.display_list),self.heigth-6)
@@ -280,6 +283,8 @@ class ShowSummaryMenu(object):
             self.window.refresh()
             curses.doupdate()
             for index,item in enumerate(self.display_list):
+                if len(item) >= self.width:
+                    item = item[:self.width-1]
                 if self.slice_start <= index <= self.slice_end:
                     self.window.addstr(1+(index-self.slice_start),2,item,curses.A_NORMAL)
             key = self.window.getch()
@@ -331,19 +336,18 @@ class ShowConsistencyMenu(object):
         self.heigth,self.width = self.window.getmaxyx()
         ### fill the list to display ###
         self.display_list = []
-        for boxpair_name,hostgroup_name in self.selection.get():
-            for box_name in boxpair_dict[boxpair_name]:
-                if box_dict[box_name].test_hostgroup_exists(hostgroup_name):
-                    ### TODO: add CA check ###
-                    result,report = box_dict[box_name].get_hostgroup_consistency(hostgroup_name)
-                    self.display_list.extend(report)
-                    if result:
-                        self.consistent.add((box_name,hostgroup_name))
-                        logger.info("{}-{} added to consistent hostgroup list during consistency check".format(box_name,hostgroup_name))
-                    else:
-                        logger.error("{}-{} not added to consistent hostgroup list during consistency check".format(box_name,hostgroup_name))
+        for box_name,hostgroup_name in self.selection.get():
+            if box_dict[box_name].test_hostgroup_exists(hostgroup_name):
+                ### TODO: add CA check ###
+                result,report = box_dict[box_name].get_hostgroup_consistency(hostgroup_name)
+                self.display_list.extend(report)
+                if result:
+                    self.consistent.add((box_name,hostgroup_name))
+                    logger.info("{}-{} added to consistent hostgroup list during consistency check".format(box_name,hostgroup_name))
                 else:
-                    logger.debug("{}-{} does not exists".format(box_name,hostgroup_name))
+                    logger.error("{}-{} not added to consistent hostgroup list during consistency check".format(box_name,hostgroup_name))
+            else:
+                logger.debug("{}-{} does not exists".format(box_name,hostgroup_name))
         ### now we know what to display ###
         self.slice_start = 0
         self.slice_len = min(len(self.display_list),self.heigth-6)
@@ -353,6 +357,8 @@ class ShowConsistencyMenu(object):
             self.window.refresh()
             curses.doupdate()
             for index,item in enumerate(self.display_list):
+                if len(item) >= self.width:
+                    item = item[:self.width-1]
                 if self.slice_start <= index <= self.slice_end:
                     self.window.addstr(1+(index-self.slice_start),2,item,curses.A_NORMAL)
             key = self.window.getch()
@@ -480,6 +486,8 @@ class Select_Menu(object):
                     mode = curses.A_NORMAL
                 # line = "{}: {}".format(index,item)
                 line = "{}".format(item)
+                if len(line) >= self.width:
+                    line = line[:self.width-1]
                 ### only add lines in the slice ###
                 # logger.debug("SelectMenu.display :: about to addstr line {}".format(line))
                 if self.slice_start <= index <= self.slice_end:
@@ -526,6 +534,7 @@ class Select_XPinfo(object):
         panel.update_panels()
         self.position = 0
         self.xpinfo_dir = xpinfo_dir
+        self.selection = selection
         
     def update(self):
         """
@@ -578,6 +587,8 @@ class Select_XPinfo(object):
                 else:
                     mode = curses.A_NORMAL
                 line = "{}".format(item)
+                if len(line) >= self.width:
+                    line = line[:self.width-1]
                 ### only add lines in the slice ###
                 if self.slice_start <= index <= self.slice_end:
                     self.window.addstr(1+(index-self.slice_start),2,line,mode)
@@ -588,21 +599,27 @@ class Select_XPinfo(object):
                 if self.position == len(self.xpinfo_file_list) - 1:
                     break
                 else:
-                    serialnbr_set = set(serialnbr_dict.values())
+                    logger.debug("XPINFO: start processing {}".format(self.xpinfo_file_list[self.position]))
+                    serial_nbr_set = set(serialnbr_dict.values())
                     ldev_dict = {}
                     hostgroup_dict = {}
-                    for serialnbr in serialnbr_set:
-                        ldev_dict[serialnbr] = set()
+                    for serial_nbr in serial_nbr_set:
+                        ldev_dict[serial_nbr] = set()
                     ### process the selected xpinfo file ###
                     with open("{}/{}".format(self.xpinfo_dir,self.xpinfo_file_list[self.position]),"rt") as f:
                         xpinfo_file_reader = csv.reader(f,delimiter=",",quotechar="'")
                         for row in xpinfo_file_reader:
-                            hostname = row[0]
-                            device_name = row[1]
-                            ldev_nbr = standard_format_ldev(row[5])
-                            serial_nbr = int(row[8])
-                            if serial_nbr in ldev_dict:
-                                ldev_dict[serialnbr].add(ldev_nbr)
+                            if len(row) > 8:
+                                hostname = row[0]
+                                device_name = row[1]
+                                ldev_nbr = xp7.standard_format_ldev(row[5])
+                                serial_nbr = int(row[8])
+                                logger.debug("XPINFO: got S/N {} LDEV {} from xpinfo file".format(serial_nbr,ldev_nbr))
+                                if serial_nbr in ldev_dict:
+                                    ldev_dict[serial_nbr].add(ldev_nbr)
+                                    logger.debug("XPINFO: known S/N, added to ldev_dict, now at {} elements".format(len(ldev_dict[serial_nbr])))
+                            else:
+                                logger.error("XPINFO: line too short to be valid, skipping {}".format(row))
                     ### translate ldev to hostgroup ###
                     for serial_nbr in ldev_dict:
                         box_name = serial_to_name_dict[serial_nbr]
@@ -615,6 +632,7 @@ class Select_XPinfo(object):
                     for box_name in hostgroup_dict:
                         for hostgroup_name in hostgroup_dict[box_name]:
                             logger.debug("XPINFO processing: adding {}-{} to the selection".format(box_name,hostgroup_name))
+                            self.selection.add((box_name,hostgroup_name))
             elif key == curses.KEY_UP:
                 self.navigate(-1)
             elif key == curses.KEY_DOWN:
@@ -629,7 +647,6 @@ class Select_XPinfo(object):
         panel.update_panels()
         curses.doupdate()
         
-            
 ####################################################################################################
 ### MAIN
 ####################################################################################################
@@ -686,12 +703,12 @@ def main(stdscr):
             hostgroup_name_list = box_dict[box_name].get_hostgroups()
             for hostgroup_name in hostgroup_name_list:
                 if hostgroup_name not in select_item_dict:
-                    select_item_dict[hostgroup_name] = []
-                select_item_dict[hostgroup_name].append((boxpair_name,hostgroup_name))
+                    select_item_dict[hostgroup_name] = set()
+                select_item_dict[hostgroup_name].add((box_name,hostgroup_name))
         hg_by_box_menu = Select_Menu(menu_win,select_item_dict,selection,search,stdscr)
         main_menu_items.append(("Select {} HOSTGROUP".format(boxpair_name),hg_by_box_menu.display))
     
-    ### select hostgroups by host ###
+    ### select hostgroups by host (hba_wwn) ###
     select_item_dict = {}
     for boxpair_name in sorted(boxpair_dict.keys()):
         for box_name in boxpair_dict[boxpair_name]:
@@ -703,9 +720,9 @@ def main(stdscr):
                         sel_item = hba_wwn.nickname.split("_")[0]
                     else:
                         sel_item = hba_wwn.nickname
-                    if "{}-{}".format(boxpair_name,sel_item) not in select_item_dict:
-                        select_item_dict["{}-{}".format(boxpair_name,sel_item)] = []
-                    select_item_dict["{}-{}".format(boxpair_name,sel_item)].append((boxpair_name,hostgroup_name))
+                    if "{}-{}".format(box_name,sel_item) not in select_item_dict:
+                        select_item_dict["{}-{}".format(box_name,sel_item)] = set()
+                    select_item_dict["{}-{}".format(box_name,sel_item)].add((box_name,hostgroup_name))
     hg_by_host_menu = Select_Menu(menu_win,select_item_dict,selection,search,stdscr)
     main_menu_items.append(("Select by HOSTNAME",hg_by_host_menu.display))
     
@@ -716,13 +733,13 @@ def main(stdscr):
             hostgroup_name_list = box_dict[box_name].get_hostgroups()
             for hostgroup_name in hostgroup_name_list:
                 if hostgroup_name not in select_item_dict:
-                        select_item_dict[hostgroup_name] = []
-                select_item_dict[hostgroup_name].append((boxpair_name,hostgroup_name))
+                        select_item_dict[hostgroup_name] = set()
+                select_item_dict[hostgroup_name].add((box_name,hostgroup_name))
     hg_by_name_menu = Select_Menu(menu_win,select_item_dict,selection,search,stdscr)
     main_menu_items.append(("Select by HOSTGROUP",hg_by_name_menu.display))
     
     ### read XPINFO file ###
-    xpinfo_menu = Select_XPinfo(menu_win,selection,"/home/koen/XP_migrator",stdscr)
+    xpinfo_menu = Select_XPinfo(menu_win,selection,xpinfo_dir,stdscr)
     main_menu_items.append(("Read XPINFO file",xpinfo_menu.display))
     
     ### show hostgroup summary menu ###
@@ -793,6 +810,11 @@ try:
 except:
     logversions = 5
     
+try:
+    xpinfo_dir = cfg.get("xpinfo","dir")
+except:
+    xpinfo_dir = "/tmp"
+    
 serial_to_name_dict = {}
 for box_name,serial_nbr in serialnbr_dict.items():
     serial_to_name_dict[serial_nbr] = box_name
@@ -822,6 +844,7 @@ logger.info("SITE NBRs:")
 logger.info(site_dict)
 logger.info("COLLECT FILEs:")
 logger.info(collectfile_dict)
+logger.info("XPINFO dir: {}".format(xpinfo_dir))
 
 #########################
 ### instantiate boxes ###
