@@ -7,6 +7,8 @@
 import subprocess
 import re
 import sys
+import os
+import os.path
 
 ################################
 # CLASSes
@@ -82,25 +84,41 @@ class Login:
 ################################
 # VARs
 ################################
-raidcom_cmd = "/usr/bin/raidcom"
+raidcom_cmd = os.path.join("c:",os.sep,"HORCM","usr","bin","raidcom.exe")
 
 ### START box config ###
 
 raidcom_inst = "-I10"
 box_name = "OS10_AB"
-box_serial = "85700"
+box_serial = "86000"
 
-#raidcom_inst = "-I17"
-#box_name = "XPM22"
-#box_serial = "85718"
+# raidcom_inst = "-I110"
+# box_name = "OS10_X"
+# box_serial = "86009"
 
-#raidcom_inst = "-I11"
-#box_name = "XPC52"
-#box_serial = "358832"
+# raidcom_inst = "-I11"
+# box_name = "OS11_AB"
+# box_serial = "85952"
 
-#raidcom_inst = "-I12"
-#box_name = "XPM24"
-#box_serial = "358823"
+# raidcom_inst = "-I111"
+# box_name = "OS11_X"
+# box_serial = "85983"
+
+# raidcom_inst = "-I12"
+# box_name = "OS12_AB"
+# box_serial = "86580"
+
+# raidcom_inst = "-I112"
+# box_name = "OS12_X"
+# box_serial = "86553"
+
+# raidcom_inst = "-I13"
+# box_name = "OS13_AB"
+# box_serial = "86572"
+
+# raidcom_inst = "-I113"
+# box_name = "OS13_X"
+# box_serial = "86587"
 
 ### END box config ###
 
@@ -130,8 +148,7 @@ login_list = []
 
 hostgroup_dict = {}
 
-# outdir = "/export/home/uxadmin/HP/collect"
-outdir = "/tmp"
+outdir = os.path.join("c:",os.sep,"TEMP","Tools")
 outfile = "%s_collect.txt" % box_name
 
 ################################
@@ -246,7 +263,7 @@ for l in get_ldev_out.splitlines():
         ldev_list.append(ldev)
 
 ### REPORT ###
-cf = open("%s/%s" % (outdir,outfile),"wt")
+cf = open(os.path.join(outdir,outfile),"wt")
 
 for port in port_list:
     cf.write("%s\n" % port )

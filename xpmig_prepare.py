@@ -243,30 +243,320 @@ import os.path
 import csv
 import string
 import xp7
+import miglog
+import collections
 
 ####################################################################################################
 ### VARIABLES
 ####################################################################################################
+linelen = 100
+Mig_tuple = collections.namedtuple("Mig_tuple",["hostgroup","source_box_sn","source_ldev_nbr","source_ldev_size","target_box_sn","target_ldev_nbr"])
+mig_list = []
+target_storage_dict = {}
+comment_re = re.compile("^#")
+name_by_serial_dict = {}
+serial_by_name_dict = {}
+instance_dict = {}
+
 ####################################################################################################
 ### FUNCTIONS
 ####################################################################################################
 ####################################################################################################
 ### CLASSES
 ####################################################################################################
+class Menu(object):
+    
+    def __init__(self,window,items,stdscr):
+        self.window = window
+        self.heigth,self.width = self.window.getmaxyx()
+        self.window.keypad(1)
+        self.panel = panel.new_panel(self.window)
+        self.panel.hide()
+        panel.update_panels()
+        self.position = 0
+        self.items = items
+        self.items.append(("exit","exit"))
+        
+    def navigate(self,n):
+        self.position += n
+        if self.position < 0:
+            self.position = 0
+        elif self.position >= len(self.items):
+            self.position = len(self.items) - 1
+            
+    def display(self):
+        self.panel.top()
+        self.panel.show()
+        self.window.clear()
+        
+        while True:
+            self.window.refresh()
+            curses.doupdate()
+            for index,item in enumerate(self.items):
+                if index == self.position:
+                    mode = curses.A_STANDOUT
+                else:
+                    mode = curses.A_NORMAL
+                # line = "{}: {}".format(index,item[0])
+                line = "{}".format(item[0])
+                if len(line) >= self.width:
+                    line = line[:self.width-1]
+                self.window.addstr(1+index,2,line,mode)
+            
+            key = self.window.getch()
+            
+            if key in [curses.KEY_ENTER,ord("\n"),ord("B"),ord("b")]:
+                if self.position == len(self.items) - 1:
+                    break
+                else:
+                    ### call the next menu item ###
+                    self.items[self.position][1]()
+            elif key == curses.KEY_UP:
+                self.navigate(-1)
+            elif key == curses.KEY_DOWN:
+                self.navigate(1)
+                
+        self.window.clear()
+        self.panel.hide()
+        panel.update_panels()
+        curses.doupdate()
+        
+class Map_menu(object):
+    
+    def __init__(self,window,map_dir,selection,stdscr):
+        self.window = window
+        self.heigth,self.width = self.window.getmaxyx()
+        self.window.keypad(1)
+        self.panel = panel.new_panel(self.window)
+        self.panel.hide()
+        panel.update_panels()
+        self.map_file_list = []
+        self.slice_start = 0
+        self.slice_end = 0
+        self.slice_len = 0
+        self.position = 0
+        self.map_dir = map_dir
+        self.selection = selection
+        
+    def update(self):
+        """
+        Read the map_dir and fill the list of map files
+        """
+        if os.path.exists(self.map_dir):
+            del(self.map_file_list[:])
+            self.map_file_list = [f for f in os.listdir(self.map_dir) if os.path.isfile(os.path.join(self.map_dir,f)) and re.match(".+\.map$",f,flags=re.IGNORECASE)]
+            self.map_file_list.append("exit")
+            self.slice_len = min(len(self.map_file_list)-1, self.heigth-6)
+            self.slice_start = 0
+            self.slice_end = self.slice_start + self.slice_len
+            self.position = 0
+        
+    def navigate(self,n):
+        self.position += n
+        if self.position < 0:
+            self.position = 0
+        elif self.position >= len(self.map_file_list):
+            self.position = len(self.map_file_list)-1
+        if n < 0:
+            if self.position - self.slice_start < 2 and self.slice_start >= 1:
+                ### slide slice up ###
+                self.slice_start += n
+                if self.slice_start < 0:
+                    self.slice_start = 0
+                self.slice_end = self.slice_start + self.slice_len
+        elif n > 0:
+            if self.slice_end - self.position < 2 and self.slice_end < len(self.map_file_list) - 1:
+                ### slide slice down ###
+                self.slice_end += n
+                if self.slice_end > len(self.map_file_list) - 1:
+                    self.slice_end = len(self.map_file_list) - 1
+                self.slice_start = self.slice_end - self.slice_len
+    
+    def display(self):
+        self.panel.top()
+        self.panel.show()
+        self.window.clear()
+        self.update()
+        
+        while True:
+            self.window.clear()
+            self.window.refresh()
+            curses.doupdate()
+            ### show the list of map files ###
+            for index,item in enumerate(self.map_file_list):
+                if index == self.position:
+                    mode = curses.A_STANDOUT
+                else:
+                    mode = curses.A_NORMAL
+                line = "{}".format(item)
+                if len(line) >= self.width:
+                    line = line[:self.width-1]
+                ### only add lines in the slice ###
+                if self.slice_start <= index <= self.slice_end:
+                    self.window.addstr(1+(index-self.slice_start),2,line,mode)
+            key = self.window.getch()
+            if key in [ord("b"),ord("B")]:
+                break
+            elif key in [curses.KEY_ENTER,ord("\n")]:
+                if self.position == len(self.map_file_list)-1:
+                    break
+                else:
+                    logger.info("MAP FILE: {} select for processing".format(self.map_file_list[self.position]))
+                    self.window.clear()
+                    self.window.refresh()
+                    ### read & parse the map file ### 
+                    map_file = os.path.join(self.map_dir,self.map_file_list[self.position])
+                    self.window.addstr(2,2,"Processing {}".format(map_file))
+                    map_file_ok = True
+                    line_nbr = 0
+                    with open(map_file,"rt") as f:
+                        map_file_reader = csv.reader(f)
+                        for row in map_file_reader:
+                            line_nbr += 1
+                            if not comment_re.match(row[0]):
+                                if len(row) == 6:
+                                    mig_tuple = Mig_tuple._make(row)
+                                    mig_list.append(mig_tuple)
+                                    logger.debug("added {}".format(mig_tuple))
+                                else:
+                                    map_file_ok = False
+                                    logger.error("{} map file contains invalid data, please correct & re-run".format(map_file))
+                                    logger.error("{}: {}".format(line_nbr,row))
+                                    self.window.addstr(3,2,"Map file contains an invalid line, please correct & re-run")
+                                    self.window.addstr(4,2,"{}: {}".format(line_nbr,row))
+                                    key = self.window.getch()
+                                    break
+                    if map_file_ok:
+                        self.window.addstr(3,2,"Map file read OK, {} source - target relations discovered".format(len(mig_list)))
+                    else:
+                        self.window.addstr(3,2,"Map file could not be processed, please correct & re-run")
+                        key = self.window.getch()
+                        break
+                    ### request confirmation to proceed with external storage discovery ###
+                    self.window.addstr(4,2,"Are all target volumes mapped to XP7 ? (y/N)")
+                    key = self.window.getch()
+                    if key in [ord("y"),ord("Y")]:
+                        ### proceed with external storage discovery ###
+                        self.window.addstr(5,2,"Proceeding with target storage discovery..")
+                        ### check which target storage is in scope ###
+                        target_sn_set = set([x.target_box_sn for x in mig_list])
+                        for target_sn in target_sn_set:
+                            if target_sn in name_by_serial_dict:
+                                target_name = name_by_serial_dict[target_sn]
+                                ### now we're able to find the IO ports to scan
+                                if target_name in target_storage_dict:
+                                    ext_storage_ports = target_storage_dict[target_name]
+                                    for external_storage_port in external_storage_ports:
+                                        ### get the wwn ###
+                                        self.window.addstr(6,2,"External storage discovery on port {}".format(external_storage_port))
+
+                                    
+                                else:
+                                    logger.error("No target IO ports defined for target {},skipping..".format(target_name))
+                            else:
+                                logger.error("Unknown target box S/N {}, skipping".format(target_sn)
+                    else:
+                        logger.info("MAP FILE: exit processing {}, target storage not mapped..".format(map_file))
+                        break
+            elif key == curses.KEY_UP:
+                self.navigate(-1)
+            elif key == curses.KEY_DOWN:
+                self.navigate(1)
+            elif key == curses.KEY_PPAGE:
+                self.navigate(-10)
+            elif key == curses.KEY_NPAGE:
+                self.navigate(10)
+        self.window.clear()
+        self.panel.hide()
+        panel.update_panels()
+        curses.doupdate()
+        
+class Selection(object):
+    
+    def __init__(self,window,title,stdscr):
+        self.window = window
+        self.heigth,self.width = self.window.getmaxyx()
+        self.title = title
+        self.selection = []
+        
+    def display(self):
+        self.window.clear()
+        line = "{} : {}".format(self.title, ",".join(["{}-{}".format(x[0],x[1]) for x in self.selection]))
+        if len(line) >= self.width:
+            line = line[:self.width-1]
+        self.window.addstr(1,2,line)
+        self.window.border()
+        self.window.refresh()
+        curses.doupdate()
+        
+    def add(self,item):
+        current_set = set(self.selection)
+        current_set.add(item)
+        self.selection = list(sorted(current_set))
+        self.display()
+        
+    def clear(self):
+        del self.selection[:]
+        self.display()
+        
+    def get(self):
+        return self.selection
+        
 ####################################################################################################
 ### MAIN 
 ####################################################################################################
+def main(stdscr):
+    ### clear screen ###
+    stdscr.clear()
+    
+    ### check window height and width ###
+    if curses.COLS < 20 and curses.LINES < 20:
+        sys.stderr.write("Window not large enough, exiting..\n")
+        sys.exit(1)
+        
+    ### define title_win ###
+    title_win = stdscr.subwin(3,curses.COLS,0,0)
+    title_win.addstr(1,2,"HPE P9500 to XP7 MIGRATION PREPARE")
+    title_win.border()
+    
+    ### define selection_win ###
+    select_win = stdscr.subwin(3,curses.COLS,curses.LINES-4,0)
+    selection = Selection(select_win,"SELECTED HOSTGROUP(s)",stdscr)
+    selection.display()
+    
+    ### define menu_win ###
+    menu_win = stdscr.subwin(curses.LINES-7,curses.COLS,3,0)
+    main_menu_items = []
+    
+    map_menu = Map_menu(menu_win,map_file_dir,selection,stdscr)
+    main_menu_items.append(("Process MAP file",map_menu.display))
+    
+    ### define status_win ###
+    # status_win = stdscr.subwin(3,curses.COLS,curses.LINES-4,0)
+    # status_win.addstr(1,2,"STATUS:")
+    # status_win.border()
+    
+    ### fire up the main menu ###
+    main_menu = Menu(menu_win,main_menu_items,stdscr)
+    main_menu.display()
+    
+    ### getting here means we exited the menu ###
+    stdscr.refresh()
+    
 configfile = "xpmig.ini"
 cfg = ConfigParser()
 cfg.read(configfile)
 
-for mandatory_section in ("mapping"):
+for mandatory_section in ("dir","target"):
     if not cfg.has_section(mandatory_section):
         sys.stderr.write("{} section missing in the config file {}, exiting..".format(mandatory_section,configfile))
         sys.exit(1)
         
+for name,value in cfg.items("target"):
+    target_storage_dict[name] = value.split(",")
+    
 try:
-    map_file_dir = cfg.get("mapping","dir")
+    map_file_dir = cfg.get("dir","map")
 except:
     map_file_dir = "/tmp"
     
@@ -276,9 +566,9 @@ except:
     loglevel = 30
     
 try:
-    logfile = cfg.get("log","file")
+    logdir = cfg.get("dir","log")
 except:
-    logfile = "/tmp/xpmig_prepare.log"
+    logdir = "/tmp/log"
     
 try:
     logsize = cfg.getint("log","size")
@@ -290,4 +580,40 @@ try:
 except:
     logversions = 5
     
+for name,value in cfg.items("serialnbr"):
+    serial_by_name_dict[name] = value
+    name_by_serial_dict[value] = name
     
+for name,value in cfg.items("instance"):
+    instance_dict[name] = value
+    
+#####################
+### start logging ###
+#####################
+logger = logging.getLogger("xpmig_prepare")
+logger.setLevel(loglevel)
+logfile = os.path.join(logdir,"xpmig_prepare.log")
+fh = logging.handlers.RotatingFileHandler(logfile,maxBytes=logsize,backupCount=logversions)
+formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s","%Y/%m/%d-%H:%M:%S")
+fh.setFormatter(formatter)
+logger.addHandler(fh)
+
+logger.info("#" * linelen)
+logger.info("XPMIG PREPARE started")
+logger.info("#" * linelen)
+
+logger.info("Configuration settings :")
+logger.info("MAPPING dir: {}".format(map_file_dir))
+    
+miglog = miglog.Miglog(logdir,"PREPARE")
+
+#####################
+### start menu    ###
+#####################
+curses.wrapper(main)
+#####################
+### stop  logging ###
+#####################
+logger.info("#" * linelen)
+logger.info("XPMIG PREPARE ended")
+logger.info("#" * linelen)

@@ -16,7 +16,7 @@ def standard_format_ldev(ldev_nbr):
     res = ldev_nbr.translate(None,":")
     res = res.translate(None,string.whitespace)
     ### lower case ###
-    return res.lower()
+    return res.zfill(4).lower()
 
 def standard_format_wwn(wwn):
     ### remove : ###
@@ -1152,13 +1152,15 @@ class XP7:
         """
         ldev_nbr_list = self.get_hostgroup_ldevs(hostgroup_name)
         res = "# XPMIG mapping file for {}-{}\n".format(self.name,hostgroup_name)
-        res += "# {},{},{},{},{}\n".format("SOURCE BOX S/N","SOURCE LDEV nbr","SOURCE LDEV size","TARGET BOX S/N","TARGET VOLUME nbr")
+        res += "# {},{},{},{},{},{}\n".format("HOSTGROUP","SOURCE BOX S/N","SOURCE LDEV nbr","SOURCE LDEV size","TARGET BOX S/N","TARGET VOLUME nbr")
         for ldev_nbr in ldev_nbr_list:
             ldev = self.get_ldev(ldev_nbr)
-            if ldev.is_cmd_device():
+            if ldev is None:
+                res += "# {} is unknown device\n".format(ldev_nbr)
+            elif ldev.is_cmd_device():
                 res += "# {} is a CMD device\n".format(ldev.nbr.upper())
             else:
-                res += "{},{},{}\n".format(self.serial_nbr,ldev.nbr.upper(),ldev.size)
+                res += "{},{},{},{}\n".format(hostgroup_name,self.serial_nbr,ldev.nbr.upper(),ldev.size)
         if fh is None:
             print res
         else:

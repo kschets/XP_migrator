@@ -379,9 +379,10 @@ class ShowConsistencyMenu(object):
         
 class ShowWriteProvisionMenu(object):
     
-    def __init__(self,window,consistent,stdscr):
+    def __init__(self,window,consistent,map_dir,stdscr):
         self.window = window
         self.consistent = consistent
+        self.map_dir = map_dir
         self.window.keypad(1)
         self.panel = panel.new_panel(self.window)
         self.panel.hide()
@@ -397,7 +398,7 @@ class ShowWriteProvisionMenu(object):
             ### write out the ldevs to file ###
             for box_name,hostgroup_name in self.consistent.get():
                 if box_dict[box_name].test_hostgroup_exists(hostgroup_name):
-                    sf = "/tmp/{}_{}.prov".format(box_name,hostgroup_name)
+                    sf = os.path.join(self.map_dir,"{}_{}.prov".format(box_name,hostgroup_name))
                     with open(sf,"wt") as sfh:
                         box_dict[box_name].print_provisioning(hostgroup_name,sfh)
             self.window.addstr(2,2,"Written..")
@@ -753,7 +754,7 @@ def main(stdscr):
     main_menu_items.append(("Clear HOSTGROUP selection",selection.clear))
     main_menu_items.append(("Clear consistent HOSTGROUP",consistent.clear))
     
-    write_prov = ShowWriteProvisionMenu(menu_win,consistent,stdscr)
+    write_prov = ShowWriteProvisionMenu(menu_win,consistent,map_dir,stdscr)
     main_menu_items.append(("Write PROVISION file",write_prov.display))
     
     main_menu = Menu(menu_win,main_menu_items,stdscr)
@@ -770,7 +771,7 @@ configfile = "xpmig.ini"
 cfg = ConfigParser()
 cfg.read(configfile)
     
-for mandatory_section in ("boxpair","serialnbr","instance","site","collect"):
+for mandatory_section in ("boxpair","serialnbr","instance","site","collect","dir"):
     if not cfg.has_section(mandatory_section):
         sys.stderr("{} section missing in config file {}, exiting..".format(mandatory_section,configfile))
         sys.exit(1)
@@ -791,29 +792,43 @@ for name,value in cfg.items("collect"):
     collectfile_dict[name.upper()] = value
     
 try:
-    loglevel = cfg.getint("log","level")
+    log_level = cfg.getint("log","level")
 except:
-    loglevel = 30
+    log_level = 30
     
 try:
-    logfile = cfg.get("log","file")
+    log_size = cfg.getint("log","maxsize")
 except:
-    logfile = "/tmp/xpmig_precheck.log"
+    log_size = 100000000
     
 try:
-    logsize = cfg.getint("log","maxsize")
+    log_versions = cfg.getint("log","maxversions")
 except:
-    logsize = 100000000
+    log_versions = 5
     
 try:
-    logversions = cfg.getint("log","maxversions")
+    log_dir = cfg.get("dir","log")
 except:
-    logversions = 5
+    sys.stderr.write("log file dir not defined, exiting..\n")
+    sys.exit(1)
     
 try:
-    xpinfo_dir = cfg.get("xpinfo","dir")
+    xpinfo_dir = cfg.get("dir","xpinfo")
 except:
-    xpinfo_dir = "/tmp"
+    sys.stderr.write("xpinfo file dir not defined, exiting..\n")
+    sys.exit(1)
+    
+try:
+    collect_dir = cfg.get("dir","collect")
+except:
+    sys.stderr.write("collect file dir not defined, exiting..\n")
+    sys.exit(1)
+    
+try:
+    map_dir = cfg.get("dir","map")
+except:
+    sys.stderr.write("map file dir not defined, exiting..\n")
+    sys.exit(1)
     
 serial_to_name_dict = {}
 for box_name,serial_nbr in serialnbr_dict.items():
@@ -822,9 +837,10 @@ for box_name,serial_nbr in serialnbr_dict.items():
 #####################
 ### start logging ###
 #####################
+logfile = os.path.join(log_dir,"xpmig_precheck.log")
 logger = logging.getLogger("xpmig_precheck")
-logger.setLevel(loglevel)
-fh = logging.handlers.RotatingFileHandler(logfile,maxBytes=logsize,backupCount=logversions)
+logger.setLevel(log_level)
+fh = logging.handlers.RotatingFileHandler(logfile,maxBytes=log_size,backupCount=log_versions)
 formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s","%Y/%m/%d-%H:%M:%S")
 fh.setFormatter(formatter)
 logger.addHandler(fh)
@@ -851,7 +867,7 @@ logger.info("XPINFO dir: {}".format(xpinfo_dir))
 #########################
 for box_name in collectfile_dict:
     
-    collect_file = collectfile_dict[box_name]
+    collect_file = os.path.join(collect_dir,collectfile_dict[box_name])
     
     if box_name in instance_dict:
         instance_nbr = instance_dict[box_name]
